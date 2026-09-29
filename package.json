@@ -1,0 +1,25 @@
+{
+  "name": "recall-ops-root",
+  "version": "1.0.0",
+  "description": "RECALL OPS - An Adaptive Incident Response Agent with Operational Memory",
+  "private": true,
+  "scripts": {
+    "start:backend": "cd backend && npx tsx src/index.ts",
+    "start:frontend": "cd frontend && npm run dev",
+    "build:backend": "cd backend && npx tsc",
+    "build:frontend": "cd frontend && npm run build",
+    "seed": "cd backend && npx tsx src/db/seed.ts",
+    "test:integration": "cd backend && npx tsx tests/integration.test.ts",
+    "typecheck": "cd backend && npx tsc --noEmit && cd ../frontend && npx tsc --noEmit"
+  },
+  "keywords": [
+    "incident-response",
+    "sre",
+    "ai-agent",
+    "hindsight",
+    "operational-memory",
+    "observability"
+  ],
+  "author": "RECALL OPS Team",
+  "license": "MIT"
+}

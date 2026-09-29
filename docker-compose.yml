@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # Hindsight Local Self-Hosted Memory Server
+  hindsight:
+    image: vectorizeio/hindsight:latest
+    container_name: recall-ops-hindsight
+    ports:
+      - "8888:8888"
+    environment:
+      - PORT=8888
+      - HINDSIGHT_AUTO_CREATE_BANKS=true
+    volumes:
+      - hindsight-data:/data
+
+  # RECALL OPS Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: recall-ops-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DATABASE_URL=file:./dev.db
+      - HINDSIGHT_BASE_URL=http://hindsight:8888
+      - HINDSIGHT_ENABLED=true
+      - HINDSIGHT_BANK_ID=recall-ops-incidents
+      - LLM_PROVIDER=anthropic
+      - LLM_MODEL=claude-3-5-sonnet-20241022
+      - LLM_API_KEY=${LLM_API_KEY:-}
+    depends_on:
+      - hindsight
+    volumes:
+      - backend-db:/app/prisma
+
+  # RECALL OPS Frontend UI
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: recall-ops-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  hindsight-data:
+  backend-db:

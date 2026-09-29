@@ -1,0 +1,287 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String   @unique
+  role      String   @default("VIEWER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  approvals      Approval[]
+  actionRequests ActionRequest[]
+  auditEvents    AuditEvent[]
+}
+
+model Incident {
+  id                   String    @id @default(cuid())
+  title                String
+  description          String
+  severity             String    // P1, P2, P3, P4
+  status               String    // DETECTED, TRIAGING, etc.
+  detectedAt           DateTime  @default(now())
+  acknowledgedAt       DateTime?
+  resolvedAt           DateTime?
+  affectedServices     String    // JSON array
+  impact               String?
+  symptoms             String    // JSON array
+  currentMetrics       String?   // JSON
+  currentLogs          String?   // JSON array
+  recentDeployments    String?   // JSON array
+  recentConfigChanges  String?   // JSON array
+  rootCause            String?
+  autonomyMode         String    @default("APPROVAL_REQUIRED")
+  agentRunId           String?
+  learningStatus       String    @default("PENDING")
+  memoryBankId         String?
+  postmortemId         String?
+
+  hypotheses     IncidentHypothesis[]
+  actionRequests ActionRequest[]
+  events         IncidentEvent[]
+  diagnostics    DiagnosticRun[]
+  auditEvents    AuditEvent[]
+  postmortem     Postmortem?
+  agentRuns      AgentRun[]
+}
+
+model IncidentHypothesis {
+  id                  String   @id @default(cuid())
+  incidentId          String
+  name                String
+  description         String
+  confidence          Float    @default(0.5)
+  supportingEvidence  String   // JSON array
+  contradictingEvidence String  // JSON array
+  nextDiagnostic      String?
+  status              String   @default("PROPOSED") // PROPOSED, TESTING, SUPPORTED, REJECTED, INCONCLUSIVE
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model DiagnosticRun {
+  id         String   @id @default(cuid())
+  incidentId String
+  tool       String
+  input      String   // JSON
+  output     String   // JSON
+  success    Boolean
+  duration   Int      // ms
+  createdAt  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model ActionRequest {
+  id            String    @id @default(cuid())
+  incidentId    String
+  requestedById String?
+  action        String
+  parameters    String    // JSON
+  reason        String
+  risk          String    // LOW, MEDIUM, HIGH, DANGEROUS
+  blastRadius   String
+  status        String    @default("PENDING") // PENDING, APPROVED, REJECTED, EXECUTING, COMPLETED, FAILED, EXPIRED
+  policyDecision String   @default("REQUIRES_APPROVAL")
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime?
+  executedAt    DateTime?
+  result        String?   // JSON
+
+  incident    Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  requestedBy User?     @relation(fields: [requestedById], references: [id])
+  approval    Approval?
+  execution   ActionExecution?
+}
+
+model Approval {
+  id              String   @id @default(cuid())
+  actionRequestId String   @unique
+  approverId      String
+  decision        String   // APPROVED, REJECTED
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  actionRequest ActionRequest @relation(fields: [actionRequestId], references: [id], onDelete: Cascade)
+  approver      User          @relation(fields: [approverId], references: [id])
+}
+
+model ActionExecution {
+  id              String   @id @default(cuid())
+  actionRequestId String   @unique
+  success         Boolean
+  output          String   // JSON
+  duration        Int      // ms
+  executedAt      DateTime @default(now())
+
+  actionRequest ActionRequest @relation(fields: [actionRequestId], references: [id], onDelete: Cascade)
+}
+
+model Service {
+  id               String  @id
+  name             String
+  type             String
+  criticality      String  // CRITICAL, HIGH, MEDIUM, LOW
+  dependencies     String  // JSON array of service IDs
+  deploymentVersion String @default("1.0.0")
+  configVersion    String  @default("1.0.0")
+  isHealthy        Boolean @default(true)
+  currentState     String  // JSON
+
+  metrics     ServiceMetricSnapshot[]
+  deployments Deployment[]
+  configChanges ConfigurationChange[]
+}
+
+model ServiceMetricSnapshot {
+  id                String   @id @default(cuid())
+  serviceId         String
+  cpu               Float
+  memory            Float
+  latencyP50        Float
+  latencyP95        Float
+  latencyP99        Float
+  requestRate       Float
+  errorRate         Float
+  activeConnections Int
+  timestamp         DateTime @default(now())
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+model Deployment {
+  id          String   @id @default(cuid())
+  serviceId   String
+  version     String
+  previousVersion String
+  deployedBy  String
+  deployedAt  DateTime @default(now())
+  status      String   // SUCCESS, FAILED, ROLLED_BACK
+  notes       String?
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+model ConfigurationChange {
+  id          String   @id @default(cuid())
+  serviceId   String
+  changedBy   String
+  changedAt   DateTime @default(now())
+  key         String
+  oldValue    String?
+  newValue    String
+  reason      String?
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+model Runbook {
+  id           String   @id @default(cuid())
+  title        String
+  service      String
+  incidentType String
+  symptoms     String   // JSON array
+  diagnostics  String   // JSON array
+  mitigation   String
+  verification String
+  escalation   String
+  lastReviewed DateTime @default(now())
+  owner        String
+  content      String
+  tags         String   // JSON array
+}
+
+model Postmortem {
+  id                 String   @id @default(cuid())
+  incidentId         String   @unique
+  summary            String
+  detection          String
+  impact             String
+  timeline           String   // JSON array
+  rootCause          String
+  contributingFactors String  // JSON array
+  investigation      String
+  actionsAttempted   String   // JSON array
+  whatWorked         String
+  whatFailed         String
+  resolution         String
+  prevention         String
+  observabilityImprovements String
+  runbookImprovements String
+  followUpActions    String   // JSON array
+  status             String   @default("DRAFT") // DRAFT, APPROVED, RETAINED
+  retainedToMemory   Boolean  @default(false)
+  memoryOperationId  String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model IncidentEvent {
+  id         String   @id @default(cuid())
+  incidentId String
+  type       String
+  message    String
+  data       String?  // JSON
+  actor      String?
+  timestamp  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model AgentRun {
+  id          String   @id @default(cuid())
+  incidentId  String
+  status      String   @default("RUNNING") // RUNNING, COMPLETED, FAILED
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  toolCalls   String   // JSON array
+  llmCalls    Int      @default(0)
+  memoryOps   String   // JSON array
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model AuditEvent {
+  id             String   @id @default(cuid())
+  timestamp      DateTime @default(now())
+  actorId        String?
+  actorRole      String?
+  incidentId     String?
+  agentRunId     String?
+  eventType      String
+  tool           String?
+  inputSummary   String?
+  outputSummary  String?
+  policyDecision String?
+  success        Boolean
+  metadata       String?  // JSON
+
+  actor    User?     @relation(fields: [actorId], references: [id])
+  incident Incident? @relation(fields: [incidentId], references: [id])
+}
+
+model MemoryOperation {
+  id          String   @id @default(cuid())
+  type        String   // retain, recall, reflect
+  bankId      String
+  query       String?
+  content     String?
+  result      String?  // JSON
+  incidentId  String?
+  duration    Int      // ms
+  success     Boolean
+  error       String?
+  createdAt   DateTime @default(now())
+}
